@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DANCE</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    min-height: 100vh;
+    overflow: hidden;
+    background: #000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Courier New', monospace;
+  }
+  canvas {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+  .content {
+    position: relative;
+    z-index: 10;
+    text-align: center;
+    color: white;
+    text-shadow: 0 0 20px rgba(0,0,0,0.8), 0 0 40px rgba(0,0,0,0.6);
+    pointer-events: none;
+  }
+  .content h1 {
+    font-size: clamp(2rem, 6vw, 5rem);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 0.5em;
+    animation: glow 2s ease-in-out infinite alternate;
+  }
+  .content p {
+    font-size: clamp(0.9rem, 2vw, 1.4rem);
+    opacity: 0.85;
+    letter-spacing: 0.3em;
+  }
+  @keyframes glow {
+    0%   { text-shadow: 0 0 20px rgba(255,50,200,0.5), 0 0 60px rgba(100,0,255,0.4), 0 0 100px rgba(0,255,200,0.2); }
+    50%  { text-shadow: 0 0 30px rgba(0,255,150,0.6), 0 0 70px rgba(255,100,0,0.4), 0 0 120px rgba(255,0,150,0.3); }
+    100% { text-shadow: 0 0 25px rgba(100,200,255,0.6), 0 0 80px rgba(200,0,255,0.5), 0 0 140px rgba(255,255,0,0.2); }
+  }
+  .controls {
+    position: fixed;
+    bottom: 20px; right: 20px;
+    z-index: 20;
+    display: flex; gap: 8px;
+  }
+  .controls button {
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,0.15);
+    color: white;
+    padding: 8px 16px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: 'Courier New', monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    transition: all 0.2s;
+  }
+  .controls button:hover {
+    background: rgba(255,255,255,0.15);
+    border-color: rgba(255,255,255,0.3);
+  }
+</style>
+</head>
+<body>
+<canvas id="spiral"></canvas>
+
+<div class="controls">
+  <button id="pixelBtn" onclick="togglePixel()">Pixel: 4px</button>
+  <button id="modeBtn" onclick="toggleMode()">Mode: LSD</button>
+  <div style="display:flex;align-items:center;gap:6px;">
+    <span style="color:white;font-size:0.7rem;letter-spacing:0.05em;font-family:'Courier New',monospace;">SPD</span>
+    <input type="range" id="speedSlider" min="0.1" max="3" step="0.1" value="1"
+      style="width:100px;accent-color:#ff00aa;cursor:pointer;" oninput="updateSpeed(this.value)">
+    <span id="speedVal" style="color:white;font-size:0.7rem;letter-spacing:0.05em;font-family:'Courier New',monospace;min-width:28px;">1.0x</span>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('spiral');
+const ctx = canvas.getContext('2d');
+
+// Hyper-saturated neon palette — acid colors, cyclic (last blends back to first)
+const colors = [
+  [255,0,100],[255,0,180],[220,0,255],[150,0,255],
+  [80,0,255],[0,50,255],[0,150,255],[0,220,255],
+  [0,255,200],[0,255,120],[80,255,0],[180,255,0],
+  [255,240,0],[255,180,0],[255,120,0],[255,60,0]
+];
+const N = colors.length;
+
+let pixelSize = 4, speed = 1, mode = 'fractal', time = 0;
+const pixelSizes = [3, 4, 6]; let pi = 1;
+const modes = ['fractal', 'warp', 'melting', 'breathing', 'kaleidoscope', 'plasma', 'tesseract', 'shroom', 'ego_death', 'deep_spiral']; let mi = 0;
+
+function resize() {
+  canvas.width = Math.ceil(window.innerWidth / pixelSize);
+  canvas.height = Math.ceil(window.innerHeight / pixelSize);
+}
+window.addEventListener('resize', resize); resize();
+
+function draw() {
+  const w = canvas.width, h = canvas.height, cx = w / 2, cy = h / 2;
+  const maxR = Math.sqrt(cx * cx + cy * cy);
+  const img = ctx.createImageData(w, h), d = img.data;
+  const t = time;
+
+  // Breathing center offset — the whole world wobbles
+  const wobX = Math.sin(t * 0.007 * speed) * cx * 0.08;
+  const wobY = Math.cos(t * 0.009 * speed) * cy * 0.08;
+
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dx = x - cx + wobX;
+    const dy = y - cy + wobY;
+    let dist = Math.sqrt(dx * dx + dy * dy);
+    const ang = Math.atan2(dy, dx);
+
+    let v, r, g, b;
+
+    // === Distortion layer: everything breathes and warps ===
+    // Spatial warping — coordinates themselves shift
+    const warpX = x + Math.sin(y * 0.08 + t * 0.015 * speed) * 3;
+    const warpY = y + Math.cos(x * 0.08 + t * 0.013 * speed) * 3;
+    const wdx = warpX - cx;
+    const wdy = warpY - cy;
+    const wDist = Math.sqrt(wdx * wdx + wdy * wdy);
+    const wAng = Math.atan2(wdy, wdx);
+
+    if (mode === 'fractal') {
+      // Layered recursive-looking patterns
+      v = 0;
+      let scale = 1;
+      for (let i = 0; i < 4; i++) {
+        const fd = wDist * scale / maxR;
+        const fa = wAng * (i + 1);
+        v += Math.sin(fd * 6 + fa + t * 0.008 * speed * (i + 1)) / scale;
+        scale *= 2.2;
+      }
+      v = v * 0.3 + wDist * 0.15 / maxR - t * 0.006 * speed;
+      v += Math.sin(warpX * 0.1 + warpY * 0.1 + t * 0.01) * 0.05;
+
+    } else if (mode === 'warp') {
+      // Tunnel / vortex — feels like falling in
+      const logDist = Math.log(wDist + 1);
+      const sa3 = Math.sin(wAng * 3);
+      const ca3 = Math.cos(wAng * 3);
+      v = Math.atan2(sa3, ca3) / (Math.PI * 2)
+        + logDist * 0.8
+        - t * 0.015 * speed;
+      v += Math.sin(logDist * 3 - t * 0.025 * speed) * 0.2;
+      v += Math.cos(Math.atan2(Math.sin(wAng * 4), Math.cos(wAng * 4)) + logDist * 2 - t * 0.01) * 0.1;
+      // Radial distortion pulses
+      v += Math.sin(wDist * 0.08 + t * 0.02) * Math.cos(Math.atan2(Math.sin(wAng * 2), Math.cos(wAng * 2))) * 0.12;
+
+    } else if (mode === 'melting') {
+      // Everything drips and melts downward
+      const meltY = wdy + Math.sin(wdx * 0.05 + t * 0.01 * speed) * 20;
+      const meltDist = Math.sqrt(wdx * wdx + meltY * meltY);
+      const meltAng = Math.atan2(meltY, wdx);
+      const smA = Math.sin(meltAng * 2);
+      const cmA = Math.cos(meltAng * 2);
+      v = Math.atan2(smA, cmA) / (Math.PI * 2)
+        + meltDist * 0.2 / maxR
+        - t * 0.008 * speed;
+      v += Math.sin(meltDist * 0.08 - t * 0.02 * speed) * 0.2;
+      // Drip pattern
+      v += Math.sin(warpX * 0.12 + t * 0.03 * speed) * 0.15;
+      v += Math.sin(warpY * 0.05 - t * 0.04 * speed) * 0.1;
+
+    } else { // breathing
+      // Concentric rings that breathe in and out
+      const breathe = Math.sin(t * 0.008 * speed) * 0.3;
+      v = wDist * (0.15 + breathe) / maxR - t * 0.005 * speed;
+      v += Math.sin(wAng * 6 + t * 0.01 * speed) * 0.15;
+      v += Math.cos(wDist * 0.1 - t * 0.02 * speed) * 0.12;
+      v += Math.sin(wAng * 3 - wDist * 0.05 + t * 0.007) * 0.08;
+    }
+
+    if (mode === 'kaleidoscope') {
+      // Mirror angular segments for kaleidoscope symmetry
+      const segments = 6;
+      let ka = ((wAng % (Math.PI * 2 / segments)) + Math.PI * 2 / segments) % (Math.PI * 2 / segments);
+      ka = ka < Math.PI / segments ? ka : Math.PI * 2 / segments - ka; // mirror
+      v = segments * ka / (Math.PI * 2)
+        + wDist * 0.2 / maxR
+        - t * 0.008 * speed;
+      v += Math.sin(wDist * 0.1 - t * 0.02 * speed) * 0.2;
+      v += Math.cos(ka * segments * 2 + wDist * 0.06 - t * 0.01) * 0.12;
+      v += Math.sin(wDist * 0.18 + t * 0.015) * 0.08;
+    }
+
+    if (mode === 'plasma') {
+      // Classic plasma with overlapping sine fields
+      v = Math.sin(warpX * 0.06 + t * 0.012 * speed)
+        + Math.sin(warpY * 0.07 - t * 0.01 * speed)
+        + Math.sin((warpX + warpY) * 0.05 + t * 0.008 * speed)
+        + Math.sin(wDist * 0.08 - t * 0.015 * speed);
+      v = v * 0.2;
+      v += Math.sin(warpX * 0.12 - warpY * 0.09 + t * 0.006) * 0.1;
+      v += Math.cos(wDist * 0.04 + wAng * 2 + t * 0.01) * 0.08;
+    }
+
+    if (mode === 'tesseract') {
+      // 4D-projected hypercube feel — grid warps folding on themselves
+      const gridX = Math.sin(warpX * 0.08 + t * 0.005 * speed) * Math.cos(warpY * 0.06);
+      const gridY = Math.cos(warpY * 0.08 - t * 0.006 * speed) * Math.sin(warpX * 0.06);
+      const fold = Math.sin(gridX * 4 + gridY * 4 + t * 0.01 * speed);
+      v = fold * 0.4
+        + wDist * 0.1 / maxR
+        + Math.sin(wAng * 4 + fold * 3) * 0.15
+        - t * 0.005 * speed;
+      v += Math.sin(gridX * 8 - gridY * 6) * 0.06;
+      v += Math.cos(wDist * 0.06 + fold * 2 - t * 0.008) * 0.08;
+    }
+
+    if (mode === 'shroom') {
+      // Organic cellular/mycelial patterns
+      const cell1 = Math.sin(warpX * 0.04 + Math.sin(warpY * 0.03) * 3 + t * 0.006 * speed);
+      const cell2 = Math.cos(warpY * 0.04 + Math.cos(warpX * 0.03) * 3 - t * 0.005 * speed);
+      const cell3 = Math.sin((warpX + warpY) * 0.03 + t * 0.004 * speed);
+      v = (cell1 + cell2 + cell3) * 0.25;
+      v += Math.sin(wDist * 0.06 - t * 0.01 * speed) * 0.15;
+      // Organic veining
+      v += Math.abs(Math.sin(warpX * 0.12 + cell1 * 2)) * 0.08;
+      v += Math.abs(Math.cos(warpY * 0.1 + cell2 * 2)) * 0.06;
+      v += Math.sin(wAng * 2 + wDist * 0.04 - t * 0.007) * 0.05;
+    }
+
+    if (mode === 'ego_death') {
+      // Everything at once — chaotic superposition — pure trig, no atan2
+      const s1 = Math.sin(wAng * 2 + wDist * 0.2 / maxR - t * 0.012 * speed) * 0.5
+               + Math.cos(wAng * 3 - wDist * 0.15 / maxR + t * 0.009 * speed) * 0.3;
+      const s2 = Math.sin(warpX * 0.06 + t * 0.01) + Math.sin(warpY * 0.07 - t * 0.009);
+      const s3 = Math.sin(wDist * 0.15 - t * 0.03 * speed) * Math.cos(wAng * 5);
+      const morph = Math.sin(t * 0.003 * speed);
+      v = s1 * (0.6 + morph * 0.2) + s2 * (0.3 - morph * 0.15) + s3 * 0.3;
+      // Rapid flicker distortion
+      v += Math.sin(wDist * 0.3 + t * 0.05 * speed) * 0.06;
+      v += Math.cos(wAng * 8 + t * 0.04 * speed) * 0.05;
+      v += Math.sin((warpX - warpY) * 0.15 + t * 0.02) * 0.04;
+      // Breathing intensity
+      v *= 1.0 + Math.sin(t * 0.006 * speed) * 0.2;
+    }
+
+    if (mode === 'deep_spiral') {
+      // Fractal spiral zoom — cyan/magenta/green like the reference
+      // Logarithmic spiral with self-similar branching
+      const logDist = Math.log(wDist + 1);
+      const goldenAngle = 2.399963; // golden angle in radians
+      
+      // Main spiral arms — tight golden-ratio based
+      const arms = 5;
+      const spiralPhase = arms * wAng / (Math.PI * 2) + logDist * 1.2 - t * 0.01 * speed;
+      
+      // Fractal layering — nested spirals at different scales
+      let fractal = 0;
+      for (let i = 0; i < 5; i++) {
+        const sc = Math.pow(2.2, i);
+        const fd = logDist * sc * 0.4;
+        const fa = wAng * (arms + i) + fd;
+        fractal += Math.sin(fa - t * 0.008 * speed * (1 + i * 0.3)) / (1 + i * 0.8);
+      }
+      
+      v = spiralPhase * 0.4 + fractal * 0.35;
+      
+      // Feathery tendrils — the wispy curling edges
+      v += Math.sin(wAng * 13 + logDist * 3 - t * 0.012 * speed) * 0.08;
+      v += Math.cos(wAng * 8 - logDist * 2.5 + t * 0.009 * speed) * 0.06;
+      
+      // Depth glow — brighter near center, fading outward
+      v += Math.sin(logDist * 2 - t * 0.02 * speed) * 0.12;
+      
+      // Override color mapping for cyan/magenta/green palette
+      const dp = v * Math.PI * 2;
+      const di = ((Math.atan2(Math.sin(dp), Math.cos(dp)) / (Math.PI * 2)) + 1.0) % 1.0;
+      // Custom deep spiral palette: cyan → blue → magenta → pink → green → cyan
+      const dsColors = [
+        [0,255,220],[0,180,255],[0,80,255],[80,0,255],
+        [160,0,255],[255,0,200],[255,0,120],[255,20,80],
+        [200,0,180],[120,0,255],[0,200,100],[0,255,160]
+      ];
+      const dsN = dsColors.length;
+      const dsPos = di * dsN;
+      const dsI = Math.floor(dsPos);
+      const dsF = dsPos - dsI;
+      const ds1 = dsColors[dsI % dsN], ds2 = dsColors[(dsI + 1) % dsN];
+      r = ds1[0] + (ds2[0] - ds1[0]) * dsF;
+      g = ds1[1] + (ds2[1] - ds1[1]) * dsF;
+      b = ds1[2] + (ds2[2] - ds1[2]) * dsF;
+      
+      // Intense glow near center
+      const centerGlow = Math.exp(-wDist * 0.015) * 0.3;
+      const dsBright = 0.75 + 0.2 * Math.sin(logDist * 1.5 + t * 0.01) + centerGlow;
+      r *= dsBright; g *= dsBright; b *= dsBright;
+      
+      // Skip normal color mapping
+      const flash2 = Math.pow(Math.max(0, Math.sin(logDist * 3 - t * 0.025 * speed)), 16) * 60;
+      const p2 = (y * w + x) * 4;
+      d[p2]     = Math.min(255, Math.max(0, r + flash2 * 0.3));
+      d[p2 + 1] = Math.min(255, Math.max(0, g + flash2));
+      d[p2 + 2] = Math.min(255, Math.max(0, b + flash2 * 0.8));
+      d[p2 + 3] = 255;
+      continue;
+    }
+
+    // === Organic tie-dye texture ===
+    v += Math.sin(warpX * 0.5 + warpY * 1.1) * 0.012;
+    v += Math.cos(warpX * 0.9 - warpY * 0.7 + t * 0.005) * 0.01;
+
+    // === Map to color — smooth fractional mod, no atan2 ===
+    // Normalize v to 0..1 range without any trig discontinuity
+    const vmod = ((v % 1) + 1) % 1;
+    const pos = vmod * N;
+    const ci = Math.floor(pos);
+    const cf = pos - ci;
+    const c1 = colors[ci % N], c2 = colors[(ci + 1) % N];
+
+    r = c1[0] + (c2[0] - c1[0]) * cf;
+    g = c1[1] + (c2[1] - c1[1]) * cf;
+    b = c1[2] + (c2[2] - c1[2]) * cf;
+
+    // === Brightness pulsing — things glow and dim ===
+    let bright = 0.8
+      + 0.15 * Math.sin(wDist * 0.06 + t * 0.012)
+      + 0.1 * Math.sin(warpX * 0.05 + warpY * 0.04 + t * 0.008);
+
+    // Color channel shifting — chromatic aberration feel
+    const shift = Math.sin(wDist * 0.04 - t * 0.01) * 0.15;
+    r = r * (bright + shift);
+    g = g * bright;
+    b = b * (bright - shift);
+
+    // Occasional bright flash spots
+    const flash = Math.pow(Math.max(0, Math.sin(wDist * 0.15 - t * 0.025 * speed)), 12) * 80;
+
+    const p = (y * w + x) * 4;
+    d[p]     = Math.min(255, Math.max(0, r + flash));
+    d[p + 1] = Math.min(255, Math.max(0, g + flash * 0.7));
+    d[p + 2] = Math.min(255, Math.max(0, b + flash * 0.5));
+    d[p + 3] = 255;
+  }
+
+  ctx.putImageData(img, 0, 0);
+  time++;
+  requestAnimationFrame(draw);
+}
+
+function togglePixel() {
+  pi = (pi + 1) % pixelSizes.length; pixelSize = pixelSizes[pi]; resize();
+  document.getElementById('pixelBtn').textContent = 'Pixel: ' + pixelSize + 'px';
+}
+function updateSpeed(val) {
+  speed = parseFloat(val);
+  document.getElementById('speedVal').textContent = speed.toFixed(1) + 'x';
+}
+function toggleMode() {
+  mi = (mi + 1) % modes.length; mode = modes[mi];
+  document.getElementById('modeBtn').textContent = 'Mode: ' + ['Fractal', 'Warp', 'Melting', 'Breathing', 'Kaleidoscope', 'Plasma', 'Tesseract', 'Shroom', 'Ego Death', 'Deep Spiral'][mi];
+}
+
+draw();
+</script>
+</body>
+</html>
